@@ -56,4 +56,74 @@ defmodule MDExBlockTags.MarkerTest do
                {:open, %Marker{tag: "custom", classes: [], attributes: []}}
     end
   end
+
+  describe "parse/2 token parsing" do
+    test "treats a bare token as a CSS class" do
+      assert Marker.parse("<!-- @section intro -->", @config) ==
+               {:open, %Marker{tag: "section", classes: ["intro"], attributes: []}}
+    end
+
+    test "treats a key=value token as an attribute" do
+      assert Marker.parse("<!-- @section id=12 -->", @config) ==
+               {:open, %Marker{tag: "section", classes: [], attributes: [{"id", "12"}]}}
+    end
+
+    test "degrades the whole marker when an attribute is not allowed" do
+      assert Marker.parse("<!-- @section intro onclick=alert(1) -->", @config) == :ordinary
+    end
+
+    test "keeps multiple classes in source order" do
+      assert Marker.parse("<!-- @nav main blue -->", @config) ==
+               {:open, %Marker{tag: "nav", classes: ["main", "blue"], attributes: []}}
+    end
+
+    test "keeps classes and attributes in source order" do
+      assert Marker.parse("<!-- @nav main id=12 blue role=navigation -->", @config) ==
+               {:open,
+                %Marker{
+                  tag: "nav",
+                  classes: ["main", "blue"],
+                  attributes: [{"id", "12"}, {"role", "navigation"}]
+                }}
+    end
+
+    test "supports quoted attribute values containing spaces" do
+      assert Marker.parse(~s(<!-- @nav title="Main navigation" -->), @config) ==
+               {:open,
+                %Marker{tag: "nav", classes: [], attributes: [{"title", "Main navigation"}]}}
+    end
+
+    test "allows any data- attribute" do
+      assert Marker.parse("<!-- @section data-open=false -->", @config) ==
+               {:open, %Marker{tag: "section", classes: [], attributes: [{"data-open", "false"}]}}
+    end
+
+    test "allows any aria- attribute" do
+      assert Marker.parse("<!-- @nav aria-label=Menu -->", @config) ==
+               {:open, %Marker{tag: "nav", classes: [], attributes: [{"aria-label", "Menu"}]}}
+    end
+
+    test "splits on the first = only" do
+      assert Marker.parse("<!-- @section data-x=a=b -->", @config) ==
+               {:open, %Marker{tag: "section", classes: [], attributes: [{"data-x", "a=b"}]}}
+    end
+
+    test "accepts an empty attribute value" do
+      assert Marker.parse("<!-- @section id= -->", @config) ==
+               {:open, %Marker{tag: "section", classes: [], attributes: [{"id", ""}]}}
+    end
+
+    test "respects a custom allowed_attributes list" do
+      config = %{@config | allowed_attributes: ["lang"]}
+
+      assert Marker.parse("<!-- @section lang=de -->", config) ==
+               {:open, %Marker{tag: "section", classes: [], attributes: [{"lang", "de"}]}}
+
+      assert Marker.parse("<!-- @section id=12 -->", config) == :ordinary
+    end
+
+    test "treats @end with tokens as an ordinary comment" do
+      assert Marker.parse("<!-- @end extra -->", @config) == :ordinary
+    end
+  end
 end
