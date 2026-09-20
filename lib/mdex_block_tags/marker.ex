@@ -45,7 +45,12 @@ defmodule MDExBlockTags.Marker do
   #   i — <!-- @SECTION --> matches; the command is downcased.
   #   s — the comment may span several lines.
   #
-  @comment ~r/\A\s*<!--\s*@([a-z][a-z0-9-]*)(.*?)-->\s*\z/is
+  @comment ~r/\A\s*<!--\s*@([a-z][a-z0-9-]*)((?:(?!-->).)*)-->\s*\z/is
+
+  # HTML/SVG attribute names: a leading letter, underscore or colon, then any
+  # number of letters, digits, hyphens, underscores, colons or dots. This
+  # excludes whitespace, `>`, `"`, `'`, `=` and `/` — see allowed_attribute?/2.
+  @attribute_name ~r/\A[a-zA-Z_:][-a-zA-Z0-9_:.]*\z/
 
   @doc """
   Classifies a comment literal.
@@ -77,8 +82,14 @@ defmodule MDExBlockTags.Marker do
   @spec parse(String.t(), config()) :: result()
   def parse(literal, config) when is_binary(literal) do
     case Regex.run(@comment, literal) do
-      [_, command, rest] -> classify(String.downcase(command), tokenize(rest), config)
-      nil -> :ordinary
+      [_, command, rest] ->
+        case tokenize(rest) do
+          {:ok, tokens} -> classify(String.downcase(command), tokens, config)
+          :error -> :ordinary
+        end
+
+      nil ->
+        :ordinary
     end
   end
 
@@ -128,10 +139,17 @@ defmodule MDExBlockTags.Marker do
     end
   end
 
+  # A character-set check runs first: it is what actually constrains what can
+  # reach the serialised tag, since it applies before either the exact-match
+  # or the data-/aria- prefix check below. Without it, `starts_with?` only
+  # constrains the first five characters of `name` and anything after that —
+  # including whitespace, `>`, `"`, `'` and `=` — would reach
+  # `HTML.attributes_string/1`.
   defp allowed_attribute?(name, config) do
-    name in config.allowed_attributes or
-      String.starts_with?(name, "data-") or
-      String.starts_with?(name, "aria-")
+    Regex.match?(@attribute_name, name) and
+      (name in config.allowed_attributes or
+         String.starts_with?(name, "data-") or
+         String.starts_with?(name, "aria-"))
   end
 
   # OptionParser.split/1 gives shell-like quoting, so both of these work:
@@ -139,10 +157,16 @@ defmodule MDExBlockTags.Marker do
   #   title=Introduction
   #   title="Main navigation"
   #
+  # It raises RuntimeError on an unbalanced quote (e.g. `title=Tom's`), which
+  # would otherwise propagate out of this library and crash the caller's
+  # render for a markdown typo. Rescue it into the same fail-closed :error
+  # that an invalid attribute name produces.
   defp tokenize(rest) do
     case String.trim(rest) do
-      "" -> []
-      trimmed -> OptionParser.split(trimmed)
+      "" -> {:ok, []}
+      trimmed -> {:ok, OptionParser.split(trimmed)}
     end
+  rescue
+    RuntimeError -> :error
   end
 end

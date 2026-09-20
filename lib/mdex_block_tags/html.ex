@@ -3,8 +3,11 @@ defmodule MDExBlockTags.HTML do
   Serialises a `MDExBlockTags.Marker` into the opening and closing HTML tags
   that wrap a block.
 
-  Attribute *values* are escaped; attribute *names* are not, because they have
-  already passed the allowlist in `MDExBlockTags.Marker`.
+  Attribute values are escaped because they are always author-controlled.
+  Attribute names are escaped too, as defence in depth: `MDExBlockTags.Marker`
+  already validates them against an allowlist and a character set before they
+  reach this module, so for a valid name the escape is a no-op, but a future
+  bug in that validation cannot turn into markup injection here.
   """
 
   alias MDExBlockTags.Marker
@@ -25,15 +28,16 @@ defmodule MDExBlockTags.HTML do
   end
 
   defp class_attribute([]), do: ""
-
-  defp class_attribute(classes) do
-    ~s( class="#{escape_attribute(Enum.join(classes, " "))}")
-  end
+  defp class_attribute(classes), do: attribute("class", Enum.join(classes, " "))
 
   defp attributes_string(attributes) do
-    Enum.map_join(attributes, "", fn {name, value} ->
-      ~s( #{name}="#{escape_attribute(value)}")
-    end)
+    Enum.map_join(attributes, "", fn {name, value} -> attribute(name, value) end)
+  end
+
+  # The one place a name="value" pair is assembled, so the escaping decision
+  # for both name and value exists exactly once.
+  defp attribute(name, value) do
+    ~s( #{escape_attribute(name)}="#{escape_attribute(value)}")
   end
 
   @doc """

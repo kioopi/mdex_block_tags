@@ -47,6 +47,15 @@ defmodule MDExBlockTags.MarkerTest do
       assert Marker.parse("text <!-- @section -->", @config) == :ordinary
     end
 
+    test "does not swallow a following comment inside the same HTML block" do
+      # Previously the lazy `.*?` + `\z` regex let this parse as {:open, ...}
+      # with a corrupted class list ["--><!--", "@end"], silently eating the
+      # @end marker. Two comments squashed into one HtmlBlock literal are not
+      # a single standalone marker, so the correct, safe outcome is :ordinary
+      # — not attempting to split them into two markers here.
+      assert Marker.parse("<!-- @section --><!-- @end -->", @config) == :ordinary
+    end
+
     test "respects a custom allowed_tags list" do
       config = %{@config | allowed_tags: ["custom"]}
 
@@ -124,6 +133,20 @@ defmodule MDExBlockTags.MarkerTest do
 
     test "treats @end with tokens as an ordinary comment" do
       assert Marker.parse("<!-- @end extra -->", @config) == :ordinary
+    end
+
+    test "rejects an attribute name containing a space (data- prefix injection)" do
+      literal = "<!-- @section \"data-x onload=alert(1)\" -->"
+      assert Marker.parse(literal, @config) == :ordinary
+    end
+
+    test "rejects an attribute name containing '>' (tag escape)" do
+      literal = "<!-- @section \"data-a><script>alert(1)</script>=x\" -->"
+      assert Marker.parse(literal, @config) == :ordinary
+    end
+
+    test "does not raise on an unbalanced quote in the marker" do
+      assert Marker.parse("<!-- @section title=Tom's -->", @config) == :ordinary
     end
   end
 end
