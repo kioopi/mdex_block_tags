@@ -20,7 +20,7 @@ erl_crash.dump
 *.ez
 
 # Ignore package tarball (built via "mix hex.build").
-formentation-*.tar
+mdex_block_tags-*.tar
 
 # https://mise.jdx.dev/configuration.html
 # https://mise.jdx.dev/configuration/environments.html

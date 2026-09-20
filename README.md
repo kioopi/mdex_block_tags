@@ -20,15 +20,27 @@ renders as:
 
 ```html
 <section class="introduction">
-  <p>Content</p>
+<p>Content</p>
 </section>
 
 <nav class="main blue" id="12" data-open="false">
-  <p>Navigation content</p>
+<p>Navigation content</p>
 </nav>
 ```
 
 ## Installation
+
+Not yet published on Hex — use a `path:` or `github:` dependency for now:
+
+```elixir
+def deps do
+  [
+    {:mdex_block_tags, github: "kioopi/mdex_block_tags"}
+  ]
+end
+```
+
+Once published, it will be:
 
 ```elixir
 def deps do
@@ -90,11 +102,26 @@ MDEx.to_html!(markdown,
 
 For untrusted Markdown, enabling `:sanitize` is the recommended posture.
 
+When sanitization is enabled, the allowlist extension is scoped to this
+plugin's own tags: `:block_tags_allowed_attributes` (plus `class`) are only
+permitted on `:block_tags_allowed_tags`, not on every element in the
+document. One residual exception: `data-*` and `aria-*` attribute names are
+always allowed, and [ammonia](https://github.com/rust-ammonia/ammonia) (the
+sanitizer MDEx uses) has no per-tag prefix option, so
+`add_generic_attribute_prefixes` necessarily widens those two prefixes to
+every tag in the document — not just this plugin's.
+
 ## Limitations
 
 Blocks are flat. Opening a block closes the previous one, so a `<nav>` cannot be
 nested inside a `<section>`. The rewriter is built around a depth-capped stack,
 so nesting is a planned change rather than a rewrite.
+
+Markers are recognised only at the **top level of the document** — the
+rewriter folds `document.nodes` and does not descend into container blocks.
+A marker written inside a list item, a blockquote, or any other nested block
+is not recognised as a marker; with `unsafe: true` (which `attach/2` always
+sets) it survives into the output as a raw, inert HTML comment instead.
 
 ## Contributing
 
