@@ -54,3 +54,6 @@ CLAUDE.md
 # Local-only AI process docs (specs, plans, discussion) — not published
 /docs/superpowers/
 /docs/discussion/
+
+# jj workspaces used for implementation
+/.workspaces/
