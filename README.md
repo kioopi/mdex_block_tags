@@ -114,20 +114,16 @@ every tag in the document — not just this plugin's.
 ## Limitations
 
 Blocks are flat. Opening a block closes the previous one, so a `<nav>` cannot be
-nested inside a `<section>`. The rewriter is built around a depth-capped stack,
-so nesting is a planned change rather than a rewrite.
+nested inside a `<section>`. 
 
-Markers are recognised only at the **top level of the document** — the
-rewriter folds `document.nodes` and does not descend into container blocks.
+Markers are recognised only at the **top level of the document**
+The rewriter folds `document.nodes` and does not descend into container blocks.
 A marker written inside a list item, a blockquote, or any other nested block
 is not recognised as a marker; with `unsafe: true` (which `attach/2` always
 sets) it survives into the output as a raw, inert HTML comment instead.
 
 ## Contributing
 
-- **Version control is [jj](https://jj-vcs.github.io/jj/)**, colocated with git.
-  Use `jj describe` / `jj new` rather than `git commit`. There is no staging
-  area — the working copy is itself a commit.
 - **Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)**:
   `<type>[(<scope>)][!]: <description>`, imperative present tense, lowercase, no
   trailing period. Types: `feat`, `fix`, `refactor`, `perf`, `style`, `test`,
@@ -140,4 +136,4 @@ sets) it survives into the output as a raw, inert HTML comment instead.
 
 ## Licence
 
-MIT © Tsoumenis Vangelis
+MIT © Vangelis Tsoumenis

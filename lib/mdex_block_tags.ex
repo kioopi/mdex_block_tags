@@ -1,6 +1,4 @@
 defmodule MDExBlockTags do
-  # Defined before @moduledoc so the defaults can be interpolated into it
-  # below, instead of being duplicated as separate literals that could drift.
   @default_allowed_tags ~w(section nav article aside main header footer div)
   @default_allowed_attributes ~w(id role title)
 
