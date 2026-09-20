@@ -55,6 +55,16 @@ defmodule MDExBlockTagsTest do
 
       refute html =~ "<script>"
     end
+
+    test "extends the allowlist to a custom attribute when sanitization is enabled" do
+      html =
+        MDEx.to_html!("<!-- @section intro itemprop=name -->\n\nHi\n",
+          plugins: [{MDExBlockTags, block_tags_allowed_attributes: ["itemprop"]}],
+          sanitize: MDEx.Document.default_sanitize_options()
+        )
+
+      assert html =~ ~s(itemprop="name")
+    end
   end
 
   describe "options" do

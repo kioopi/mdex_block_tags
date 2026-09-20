@@ -113,7 +113,7 @@ defmodule MDExBlockTags do
       _enabled ->
         Document.put_sanitize_options(document,
           add_tags: config(document).allowed_tags,
-          add_generic_attributes: ["id", "class", "role"],
+          add_generic_attributes: Enum.uniq(["class" | config(document).allowed_attributes]),
           add_generic_attribute_prefixes: ["data-", "aria-"]
         )
     end
