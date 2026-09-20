@@ -1,4 +1,9 @@
 defmodule MDExBlockTags do
+  # Defined before @moduledoc so the defaults can be interpolated into it
+  # below, instead of being duplicated as separate literals that could drift.
+  @default_allowed_tags ~w(section nav article aside main header footer div)
+  @default_allowed_attributes ~w(id role title)
+
   @moduledoc """
   An [MDEx](https://hexdocs.pm/mdex) plugin that adds semantic block
   annotations to Markdown using HTML comments.
@@ -38,11 +43,11 @@ defmodule MDExBlockTags do
   ## Options
 
     * `:block_tags_allowed_tags` — the commands that may open a block.
-      Defaults to `#{inspect(~w(section nav article aside main header footer div))}`.
+      Defaults to `#{inspect(@default_allowed_tags)}`.
 
     * `:block_tags_allowed_attributes` — attribute names permitted in addition
       to anything prefixed `data-` or `aria-`. Defaults to
-      `#{inspect(~w(id role title))}`.
+      `#{inspect(@default_allowed_attributes)}`.
 
   A marker naming any other attribute is left in the document as an ordinary
   comment rather than being rendered with the attribute stripped.
@@ -68,9 +73,6 @@ defmodule MDExBlockTags do
 
   alias MDEx.Document
   alias MDExBlockTags.Rewriter
-
-  @default_allowed_tags ~w(section nav article aside main header footer div)
-  @default_allowed_attributes ~w(id role title)
 
   @doc """
   Attaches the plugin to an `MDEx.Document`.
@@ -111,9 +113,15 @@ defmodule MDExBlockTags do
         document
 
       _enabled ->
+        cfg = config(document)
+        attributes = Enum.uniq(["class" | cfg.allowed_attributes])
+
         Document.put_sanitize_options(document,
-          add_tags: config(document).allowed_tags,
-          add_generic_attributes: Enum.uniq(["class" | config(document).allowed_attributes]),
+          add_tags: cfg.allowed_tags,
+          add_tag_attributes: Map.new(cfg.allowed_tags, &{&1, attributes}),
+          # ammonia has no per-tag prefix option, so add_generic_attribute_prefixes
+          # necessarily widens data-*/aria-* to every tag in the document, not
+          # just this plugin's own — see the README's Safety section.
           add_generic_attribute_prefixes: ["data-", "aria-"]
         )
     end
