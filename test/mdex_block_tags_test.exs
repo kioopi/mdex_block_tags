@@ -65,6 +65,70 @@ defmodule MDExBlockTagsTest do
 
       assert html =~ ~s(itemprop="name")
     end
+
+    test "does not widen the sanitizer's generic attributes to other elements" do
+      markdown = """
+      <!-- @section intro -->
+
+      Hi
+
+      <span id="clobber">raw</span>
+
+      <!-- @end -->
+      """
+
+      html =
+        MDEx.to_html!(markdown,
+          plugins: [MDExBlockTags],
+          sanitize: MDEx.Document.default_sanitize_options()
+        )
+
+      assert html =~ ~s(<section class="intro">)
+      # `id` is in the plugin's default allowed_attributes, but must only be
+      # permitted on the plugin's own allowed_tags, not on every element in
+      # the document — `span` is not one of the plugin's allowed_tags, so it
+      # must not gain `id` just because sanitization is enabled (I1:
+      # add_generic_attributes previously widened sanitize document-wide).
+      refute html =~ ~s(id="clobber")
+    end
+
+    test "rejects an attribute name that would inject markup (C1)" do
+      literal = "<!-- @section \"data-x onload=alert(1)\" -->\n\nHi\n"
+
+      html = MDEx.to_html!(literal, plugins: [MDExBlockTags])
+
+      # The disallowed attribute name fails the marker closed: no <section>
+      # tag is emitted at all, so `onload` can only ever appear as inert text
+      # inside the untouched, unsplit HTML comment.
+      refute html =~ "<section"
+      assert html =~ "<!-- @section \"data-x onload=alert(1)\" -->"
+    end
+
+    test "rejects an attribute name that would escape the tag (C1)" do
+      literal = "<!-- @section \"data-a><script>alert(1)</script>=x\" -->\n\nHi\n"
+
+      html = MDEx.to_html!(literal, plugins: [MDExBlockTags])
+
+      refute html =~ "<section"
+      # The whole payload, including the `<script>` text, stays inert inside
+      # a single untouched HTML comment rather than escaping into live markup.
+      assert html =~ "<!-- @section \"data-a><script>alert(1)</script>=x\" -->"
+    end
+
+    test "does not raise when a marker contains an unbalanced quote (C2)" do
+      literal = "<!-- @section title=Tom's -->\n\nHi\n"
+
+      assert MDEx.to_html!(literal, plugins: [MDExBlockTags]) =~ "Tom's"
+    end
+
+    test "a disallowed attribute renders the marker as an ordinary comment (end-to-end fail-closed)" do
+      markdown = "<!-- @section onclick=alert(1) -->\n\nHi\n"
+
+      html = MDEx.to_html!(markdown, plugins: [MDExBlockTags])
+
+      refute html =~ "<section"
+      assert html =~ "<!-- @section onclick=alert(1) -->"
+    end
   end
 
   describe "options" do

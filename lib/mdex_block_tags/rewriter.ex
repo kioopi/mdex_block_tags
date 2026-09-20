@@ -31,7 +31,7 @@ defmodule MDExBlockTags.Rewriter do
       {~s(<section class="intro">\\n), "</section>\\n"}
 
   """
-  @spec run([struct()], Marker.config()) :: [struct()]
+  @spec run([MDEx.Document.md_node()], Marker.config()) :: [MDEx.Document.md_node()]
   def run(nodes, config) do
     {stack, output} = Enum.reduce(nodes, {[], []}, &step(&1, &2, config))
     {[], output} = close_all(stack, output)

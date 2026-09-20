@@ -112,5 +112,11 @@ defmodule MDExBlockTags.RewriterTest do
     test "leaves an empty node list alone" do
       assert Rewriter.run([], @config) == []
     end
+
+    test "does not descend into container blocks (markers only work at document root)" do
+      blockquote = %MDEx.BlockQuote{nodes: [marker("<!-- @section -->"), para("Hi")]}
+
+      assert Rewriter.run([blockquote], @config) == [blockquote]
+    end
   end
 end
