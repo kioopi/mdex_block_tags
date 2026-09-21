@@ -13,11 +13,20 @@ defmodule MDExBlockTags.Rewriter do
   whole result is reversed once at the end.
   """
 
-  alias MDExBlockTags.HTML
+  alias MDExBlockTags.Handlers
   alias MDExBlockTags.Marker
 
   # Flat blocks. Raise this (or set it to :infinity) to allow nesting.
   @max_depth 1
+
+  @typedoc """
+  `Marker.config()` plus the handlers to apply to each closed block.
+  """
+  @type config :: %{
+          required(:allowed_tags) => [String.t()],
+          required(:allowed_attributes) => [String.t()],
+          optional(:handlers) => [module()]
+        }
 
   @doc """
   Rewrites `nodes`, wrapping marked regions in HTML block tags.
@@ -31,10 +40,10 @@ defmodule MDExBlockTags.Rewriter do
       {~s(<section class="intro">\\n), "</section>\\n"}
 
   """
-  @spec run([MDEx.Document.md_node()], Marker.config()) :: [MDEx.Document.md_node()]
+  @spec run([MDEx.Document.md_node()], config()) :: [MDEx.Document.md_node()]
   def run(nodes, config) do
     {stack, output} = Enum.reduce(nodes, {[], []}, &step(&1, &2, config))
-    {[], output} = close_all(stack, output)
+    {[], output} = close_all(stack, output, config)
 
     Enum.reverse(output)
   end
@@ -44,7 +53,7 @@ defmodule MDExBlockTags.Rewriter do
       {:open, marker} ->
         {stack, output} =
           if length(stack) >= @max_depth do
-            close_top(stack, output)
+            close_top(stack, output, config)
           else
             {stack, output}
           end
@@ -55,7 +64,7 @@ defmodule MDExBlockTags.Rewriter do
         case stack do
           # Orphan @end: leave the comment alone.
           [] -> {stack, [node | output]}
-          _ -> close_top(stack, output)
+          _ -> close_top(stack, output, config)
         end
 
       :ordinary ->
@@ -73,37 +82,29 @@ defmodule MDExBlockTags.Rewriter do
     %{marker: marker, nodes: [], sourcepos: node.sourcepos}
   end
 
-  defp close_all([], output), do: {[], output}
+  defp close_all([], output, _config), do: {[], output}
 
-  defp close_all(stack, output) do
-    {stack, output} = close_top(stack, output)
-    close_all(stack, output)
+  defp close_all(stack, output, config) do
+    {stack, output} = close_top(stack, output, config)
+    close_all(stack, output, config)
   end
 
-  defp close_top([block | rest], output) do
-    # Reverse order: </tag>, children…, <tag>
-    wrapped = [closing(block) | block.nodes] ++ [opening(block)]
+  defp close_top([block | rest], output, config) do
+    # Handlers.render/4 works in document order; the accumulators here are
+    # reversed, so the children go in reversed and the result comes out
+    # reversed.
+    wrapped =
+      block.marker
+      |> Handlers.render(
+        Enum.reverse(block.nodes),
+        block.sourcepos,
+        Map.get(config, :handlers, [])
+      )
+      |> Enum.reverse()
 
     case rest do
       [] -> {rest, wrapped ++ output}
       [parent | tail] -> {[%{parent | nodes: wrapped ++ parent.nodes} | tail], output}
     end
-  end
-
-  defp opening(%{marker: marker, sourcepos: sourcepos}) do
-    HTML.open_tag(marker)
-    |> html_block(sourcepos)
-  end
-
-  defp closing(%{marker: marker}) do
-    HTML.close_tag(marker) |> html_block()
-  end
-
-  def html_block(tag) do
-    %MDEx.HtmlBlock{literal: tag <> "\n"}
-  end
-
-  def html_block(tag, sourcepos) do
-    %{html_block(tag) | sourcepos: sourcepos}
   end
 end

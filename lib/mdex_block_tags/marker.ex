@@ -34,8 +34,10 @@ defmodule MDExBlockTags.Marker do
   `aria-`.
   """
   @type config :: %{
-          allowed_tags: [String.t()],
-          allowed_attributes: [String.t()]
+          required(:allowed_tags) => [String.t()],
+          required(:allowed_attributes) => [String.t()],
+          # Callers such as MDExBlockTags.Rewriter carry further keys.
+          optional(atom()) => term()
         }
 
   @type result :: {:open, t()} | :close | :ordinary
