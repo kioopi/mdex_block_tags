@@ -3,6 +3,8 @@ defmodule MDExBlockTags.HandlerTest do
 
   alias MDExBlockTags.Marker
 
+  doctest MDExBlockTags.Handler
+
   defmodule OnlyMatch do
     @moduledoc "A handler that implements nothing but the required callback."
     use MDExBlockTags.Handler

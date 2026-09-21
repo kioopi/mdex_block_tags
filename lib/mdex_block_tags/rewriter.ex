@@ -11,6 +11,11 @@ defmodule MDExBlockTags.Rewriter do
 
   Both the output list and each block's children accumulate in reverse, and the
   whole result is reversed once at the end.
+
+  A closed block is rendered by `MDExBlockTags.Handlers.render/4`, which
+  applies the host's `:block_tags_handlers`. This module only tracks block
+  structure — where each block starts and ends, and what belongs to it — and
+  hands the closed block off for rendering.
   """
 
   alias MDExBlockTags.Handlers

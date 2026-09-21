@@ -8,21 +8,27 @@ defmodule MDExBlockTags.Handler do
   `:block_tags_handlers` option; they apply in list order, and each one sees
   the result of the ones before it.
 
-      defmodule MyApp.DocsSection do
-        use MDExBlockTags.Handler
-
-        @impl true
-        def match(%Marker{tag: "section", classes: classes}), do: "docs" in classes
-        def match(_marker), do: false
-
-        @impl true
-        def add(_marker), do: [before: ~s(<a href="/docs">Back to Documentation</a>)]
-
-        @impl true
-        def wrap(_marker), do: [inner: %Marker{tag: "div", classes: ["doc-container"]}]
-      end
-
   `c:match/1` is called for **every** block, so it needs a catch-all clause.
+
+  Registered and rendered:
+
+      iex> defmodule MyApp.DocsSection do
+      ...>   use MDExBlockTags.Handler
+      ...>
+      ...>   @impl true
+      ...>   def match(%Marker{tag: "section", classes: classes}), do: "docs" in classes
+      ...>   def match(_marker), do: false
+      ...>
+      ...>   @impl true
+      ...>   def add(_marker), do: [before: ~s(<a href="/docs">Back to Documentation</a>)]
+      ...>
+      ...>   @impl true
+      ...>   def wrap(_marker), do: [inner: %Marker{tag: "div", classes: ["doc-container"]}]
+      ...> end
+      iex> MDEx.to_html!("<!-- @section docs -->\\n\\nThe original content\\n",
+      ...>   plugins: [{MDExBlockTags, block_tags_handlers: [MyApp.DocsSection]}]
+      ...> )
+      ~s(<a href="/docs">Back to Documentation</a>\\n<section class="docs">\\n<div class="doc-container">\\n<p>The original content</p>\\n</div>\\n</section>)
 
   ## Positions
 
@@ -38,8 +44,13 @@ defmodule MDExBlockTags.Handler do
   ## `use MDExBlockTags.Handler`
 
   Declares the behaviour, aliases `MDExBlockTags.Marker` as `Marker`, imports
-  `MDExBlockTags.HTML.escape/1`, and defines overridable defaults for every
-  callback except `c:match/1`.
+  an `escape/1` function, and defines overridable defaults for every callback
+  except `c:match/1`.
+
+  `escape/1` replaces `&`, `"`, `<` and `>` with their HTML entities, which
+  makes a string safe to interpolate inside a **double**-quoted attribute
+  value or as text content. It does not escape `'`, so it is not safe inside
+  a single-quoted attribute.
 
   ## Trust
 

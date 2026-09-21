@@ -47,6 +47,10 @@ defmodule MDExBlockTags do
       to anything prefixed `data-` or `aria-`. Defaults to
       `#{inspect(@default_allowed_attributes)}`.
 
+    * `:block_tags_handlers` — `MDExBlockTags.Handler` modules that customise
+      the output for the blocks they match, applied in list order. Defaults
+      to `[]`.
+
   A marker naming any other attribute is left in the document as an ordinary
   comment rather than being rendered with the attribute stripped.
 
@@ -88,7 +92,8 @@ defmodule MDExBlockTags do
     document
     |> Document.register_options([
       :block_tags_allowed_tags,
-      :block_tags_allowed_attributes
+      :block_tags_allowed_attributes,
+      :block_tags_handlers
     ])
     |> Document.put_options(options)
     |> Document.append_steps(
@@ -138,7 +143,8 @@ defmodule MDExBlockTags do
           document,
           :block_tags_allowed_attributes,
           @default_allowed_attributes
-        )
+        ),
+      handlers: Document.get_option(document, :block_tags_handlers, [])
     }
   end
 end

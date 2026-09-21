@@ -10,6 +10,22 @@ defmodule MDExBlockTags.RewriterTest do
     allowed_attributes: ~w(id role title)
   }
 
+  defmodule JoinChildren do
+    @moduledoc "Replaces the children with their texts joined in the order received."
+    use MDExBlockTags.Handler
+
+    @impl true
+    def match(_marker), do: true
+
+    @impl true
+    def content(_marker, nodes) do
+      texts =
+        Enum.map_join(nodes, ",", fn %MDEx.Paragraph{nodes: [%MDEx.Text{literal: t}]} -> t end)
+
+      [%MDEx.Paragraph{nodes: [%MDEx.Text{literal: texts}]}]
+    end
+  end
+
   defp marker(literal), do: %MDEx.HtmlBlock{literal: literal <> "\n"}
   defp para(text), do: %MDEx.Paragraph{nodes: [%MDEx.Text{literal: text}]}
 
@@ -117,6 +133,13 @@ defmodule MDExBlockTags.RewriterTest do
       blockquote = %MDEx.BlockQuote{nodes: [marker("<!-- @section -->"), para("Hi")]}
 
       assert Rewriter.run([blockquote], @config) == [blockquote]
+    end
+
+    test "applies configured handlers, passing children in document order" do
+      nodes = [marker("<!-- @section -->"), para("one"), para("two")]
+      config = Map.put(@config, :handlers, [JoinChildren])
+
+      assert literals(Rewriter.run(nodes, config)) == ["<section>", "one,two", "</section>"]
     end
   end
 end
