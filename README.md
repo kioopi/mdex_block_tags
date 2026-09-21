@@ -122,6 +122,42 @@ A marker written inside a list item, a blockquote, or any other nested block
 is not recognised as a marker; with `unsafe: true` (which `attach/2` always
 sets) it survives into the output as a raw, inert HTML comment instead.
 
+## Development
+
+The toolchain (Erlang, Elixir and git-cliff) is pinned in `mise.toml`:
+
+```sh
+mise install
+mix deps.get
+```
+
+Day to day:
+
+```sh
+mix test                          # the test suite, including doctests
+mix test test/mdex_block_tags_test.exs:42   # a single test
+mix format                        # format the code
+mix docs                          # build the docs into doc/
+```
+
+Before calling a change done, run everything CI runs:
+
+```sh
+mix ci
+```
+
+`mix ci` runs in the `test` environment and chains
+`compile --warnings-as-errors`, `format --check-formatted`, `test`,
+`credo --strict` (with the [ExSlop](https://hex.pm/packages/ex_slop) plugin),
+`dialyzer`, `ex_dna --max-clones 0` and `reach.check --arch --smells`. The
+first run builds the Dialyzer PLTs into `priv/plts/` (gitignored), which takes
+a minute or two. Later runs reuse them.
+
+The repository uses [Jujutsu](https://jj-vcs.github.io/jj/), colocated with
+git. Use `jj` for anything that changes history. Read-only `git` commands such
+as `git log` and `git diff` are fine, but `git commit`, `git rebase`,
+`git checkout` and friends will confuse jj's view of the working copy.
+
 ## Contributing
 
 - **Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)**:
@@ -129,10 +165,80 @@ sets) it survives into the output as a raw, inert HTML comment instead.
   trailing period. Types: `feat`, `fix`, `refactor`, `perf`, `style`, `test`,
   `docs`, `build`, `ops`, `chore`.
 - **`CHANGELOG.md` is generated** from those commits with
-  [git-cliff](https://git-cliff.org/) and is never hand-edited.
+  [git-cliff](https://git-cliff.org/) and is never hand-edited. A badly worded
+  entry is fixed by rewording the commit (`jj describe -r <change>`), not the
+  changelog.
 - **Everything needs a test**, written first — red, green, refactor.
-- Run `mix format`, `mix compile --warnings-as-errors` and `mix test` before
-  committing.
+- `mix ci` must pass before a change is pushed.
+
+## Releasing
+
+Versions follow [SemVer](https://semver.org/), derived from the commit types:
+`fix` → patch, `feat` → minor, a breaking change → major. While the library is
+below 1.0, breaking changes bump the minor version and are called out in the
+changelog.
+
+**How git-cliff and jj fit together.** In a colocated repository jj keeps git's
+`HEAD` on the *parent* of the working-copy change (`@-`), not on `@` itself.
+git-cliff reads git, so it only sees changes below `@`. The procedure below
+relies on that: every change being released is committed below `@`, and the
+release change (version bump and changelog) is `@`, which git-cliff does not
+see.
+
+1. **Start the release change on top of `main`.** Make sure `main` points at
+   the last change to release and `mix ci` passes there.
+
+   ```sh
+   jj new main -m "chore(release): v0.2.0"
+   ```
+
+2. **Check that git sees the same history as jj.** jj normally exports to git
+   on every command, but a stale ref makes git-cliff walk the wrong history
+   *without an error*:
+
+   ```sh
+   jj git export
+   git log --oneline -3 HEAD         # the top line must be main's latest change
+   ```
+
+3. **Bump `@version` in `mix.exs`.**
+
+4. **Preview, then generate the changelog.** Run this from the repository
+   root, **not** from a jj workspace under `.workspaces/`: a secondary
+   workspace has no `.git`, and git-cliff there exits successfully with an
+   empty changelog.
+
+   ```sh
+   git cliff --unreleased --tag v0.2.0    # preview the new section
+   git cliff --tag v0.2.0 -o CHANGELOG.md
+   ```
+
+   **Read `CHANGELOG.md` before going on.** Both failure modes above produce a
+   well-formed file that is wrong, not an error. Only conventional commits are
+   listed, and `chore` commits are skipped (see `cliff.toml`), which is why the
+   release change itself never shows up.
+
+5. **Verify, then seal the release change and move `main` onto it.**
+
+   ```sh
+   mix ci
+   jj new
+   jj bookmark move main --to @-
+   ```
+
+6. **Tag and push.** jj creates and pushes the tag itself. `mix docs` links
+   to the source at `v<version>`, so the tag must exist on GitHub.
+
+   ```sh
+   jj tag set v0.2.0 -r main
+   jj git push --bookmark main --tag v0.2.0
+   ```
+
+7. **Publish to Hex.**
+
+   ```sh
+   mix hex.publish
+   ```
 
 ## Licence
 
