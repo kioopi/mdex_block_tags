@@ -81,19 +81,29 @@ defmodule MDExBlockTags.Rewriter do
   end
 
   defp close_top([block | rest], output) do
-    opening = %MDEx.HtmlBlock{
-      literal: HTML.open_tag(block.marker) <> "\n",
-      sourcepos: block.sourcepos
-    }
-
-    closing = %MDEx.HtmlBlock{literal: HTML.close_tag(block.marker) <> "\n"}
-
     # Reverse order: </tag>, children…, <tag>
-    wrapped = [closing | block.nodes] ++ [opening]
+    wrapped = [closing(block) | block.nodes] ++ [opening(block)]
 
     case rest do
       [] -> {rest, wrapped ++ output}
       [parent | tail] -> {[%{parent | nodes: wrapped ++ parent.nodes} | tail], output}
     end
+  end
+
+  defp opening(%{marker: marker, sourcepos: sourcepos}) do
+    HTML.open_tag(marker)
+    |> html_block(sourcepos)
+  end
+
+  defp closing(%{marker: marker}) do
+    HTML.close_tag(marker) |> html_block()
+  end
+
+  def html_block(tag) do
+    %MDEx.HtmlBlock{literal: tag <> "\n"}
+  end
+
+  def html_block(tag, sourcepos) do
+    %{html_block(tag) | sourcepos: sourcepos}
   end
 end

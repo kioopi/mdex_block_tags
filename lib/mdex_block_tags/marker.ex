@@ -81,33 +81,61 @@ defmodule MDExBlockTags.Marker do
   """
   @spec parse(String.t(), config()) :: result()
   def parse(literal, config) when is_binary(literal) do
-    case Regex.run(@comment, literal) do
-      [_, command, rest] ->
-        case tokenize(rest) do
-          {:ok, tokens} -> classify(String.downcase(command), tokens, config)
-          :error -> :ordinary
-        end
-
-      nil ->
-        :ordinary
+    with(
+      {:ok, command, rest} <- split_comment(literal),
+      {:ok, tokens} <- tokenize(rest),
+      {:open, tag} <- classify(String.downcase(command), tokens),
+      :ok <- tag_allowed?(tag, config),
+      {classes, attributes} <- parse_tokens(tokens),
+      :ok <- attributes_allowed?(attributes, config)
+    ) do
+      {:open, %__MODULE__{tag: tag, classes: classes, attributes: attributes}}
+    else
+      :close -> :close
+      _ -> :ordinary
     end
   end
 
-  defp classify("end", [], _config), do: :close
-  defp classify("end", _tokens, _config), do: :ordinary
-
-  defp classify(tag, tokens, config) do
-    if tag in config.allowed_tags do
-      case parse_tokens(tokens, config) do
-        {:ok, classes, attributes} ->
-          {:open, %__MODULE__{tag: tag, classes: classes, attributes: attributes}}
-
-        :error ->
-          :ordinary
-      end
-    else
-      :ordinary
+  # Split the comment string into command and everything after it.
+  # The @tag is called command here because it may be @end at this point.
+  #
+  # iex> MDExBlockTags.Marker.split_comment("<!-- @end -->")
+  # {:ok, "end", []}
+  @spec split_comment(String.t()) :: {:ok, String.t(), String.t()} | :error
+  defp split_comment(literal) do
+    case Regex.run(@comment, literal) do
+      [_, command, rest] -> {:ok, command, rest}
+      _ -> :error
     end
+  end
+
+  # OptionParser.split/1 gives shell-like quoting, so both of these work:
+  #
+  #   title=Introduction
+  #   title="Main navigation"
+  #
+  # It raises RuntimeError on an unbalanced quote (e.g. `title=Tom's`), which
+  # would otherwise propagate out of this library and crash the caller's
+  # render for a markdown typo. Rescue it into the same fail-closed :error
+  # that an invalid attribute name produces.
+  @spec tokenize(String.t()) :: {:ok, [String.t()]} | :error
+  defp tokenize(rest) do
+    case String.trim(rest) do
+      "" -> {:ok, []}
+      trimmed -> {:ok, OptionParser.split(trimmed)}
+    end
+  rescue
+    RuntimeError -> :error
+  end
+
+  defp classify("end", []), do: :close
+  defp classify("end", _attributes), do: :ordinary
+  defp classify(tag, _attributes), do: {:open, tag}
+
+  defp tag_allowed?("end", _config), do: :ok
+
+  defp tag_allowed?(tag, config) do
+    if tag in config.allowed_tags, do: :ok, else: :forbidden
   end
 
   # Bare tokens are CSS classes; key=value tokens are HTML attributes.
@@ -118,24 +146,31 @@ defmodule MDExBlockTags.Marker do
   # [{"id", "12"}, {"data-open", "false"}].
   #
   # A disallowed attribute name fails the whole marker — see the module doc.
-  defp parse_tokens(tokens, config) do
-    tokens
-    |> Enum.reduce_while({:ok, [], []}, fn token, {:ok, classes, attributes} ->
-      case String.split(token, "=", parts: 2) do
-        [class] ->
-          {:cont, {:ok, [class | classes], attributes}}
+  defp parse_tokens(tokens) do
+    {classes, attributes} =
+      tokens
+      |> Enum.reduce({[], []}, fn token, acc ->
+        String.split(token, "=", parts: 2) |> parse_token(acc)
+      end)
 
-        [name, value] ->
-          if allowed_attribute?(name, config) do
-            {:cont, {:ok, classes, [{name, value} | attributes]}}
-          else
-            {:halt, :error}
-          end
-      end
-    end)
-    |> case do
-      {:ok, classes, attributes} -> {:ok, Enum.reverse(classes), Enum.reverse(attributes)}
-      :error -> :error
+    {Enum.reverse(classes), Enum.reverse(attributes)}
+  end
+
+  defp parse_token([name, value], {classes, attributes}) do
+    {classes, [{name, value} | attributes]}
+  end
+
+  defp parse_token([class], {classes, attributes}) do
+    {[class | classes], attributes}
+  end
+
+  defp attributes_allowed?(attributes, config) do
+    if Enum.all?(attributes, fn {name, _value} ->
+         allowed_attribute?(name, config)
+       end) do
+      :ok
+    else
+      :forbidden
     end
   end
 
@@ -150,23 +185,5 @@ defmodule MDExBlockTags.Marker do
       (name in config.allowed_attributes or
          String.starts_with?(name, "data-") or
          String.starts_with?(name, "aria-"))
-  end
-
-  # OptionParser.split/1 gives shell-like quoting, so both of these work:
-  #
-  #   title=Introduction
-  #   title="Main navigation"
-  #
-  # It raises RuntimeError on an unbalanced quote (e.g. `title=Tom's`), which
-  # would otherwise propagate out of this library and crash the caller's
-  # render for a markdown typo. Rescue it into the same fail-closed :error
-  # that an invalid attribute name produces.
-  defp tokenize(rest) do
-    case String.trim(rest) do
-      "" -> {:ok, []}
-      trimmed -> {:ok, OptionParser.split(trimmed)}
-    end
-  rescue
-    RuntimeError -> :error
   end
 end

@@ -17,14 +17,29 @@ defmodule MDExBlockTags.MixProject do
       source_url: @source_url,
       description:
         "An MDEx plugin that wraps Markdown content in semantic HTML block " <>
-          "elements using HTML comment markers."
+          "elements using HTML comment markers.",
+      dialyzer: [
+        plt_add_apps: [:ex_unit]
+      ],
+      aliases: aliases()
     ]
   end
 
   def application, do: []
 
+  def cli do
+    [
+      preferred_envs: [ci: :test]
+    ]
+  end
+
   defp deps do
     [
+      {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.0", only: [:dev, :test], runtime: false},
+      {:ex_dna, "~> 1.0", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.0", only: [:dev, :test], runtime: false},
       {:mdex, "~> 0.13"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
@@ -44,6 +59,20 @@ defmodule MDExBlockTags.MixProject do
       extras: ["README.md", "CHANGELOG.md"],
       source_ref: "v#{@version}",
       filter_modules: fn module, _metadata -> module == MDExBlockTags end
+    ]
+  end
+
+  defp aliases() do
+    [
+      ci: [
+        "compile --warnings-as-errors",
+        "format --check-formatted",
+        "test",
+        "credo --strict",
+        "dialyzer",
+        "ex_dna --max-clones 0",
+        "reach.check --arch --smells"
+      ]
     ]
   end
 end
