@@ -6,3 +6,7 @@ git-cliff = "2"
 [hooks]
 # Runs after every `mise install`, including one that installs nothing.
 postinstall = "mix deps.get"
+
+[task_config]
+# File tasks live in scripts/ (`mise run release`, `mise run test:release`).
+includes = ["scripts"]

@@ -124,11 +124,12 @@ sets) it survives into the output as a raw, inert HTML comment instead.
 
 ## Development
 
-The toolchain (Erlang, Elixir and git-cliff) is pinned in `mise.toml`:
+The toolchain (Erlang, Elixir and git-cliff) is pinned in `mise.toml`.
+`mise install` installs it and then runs `mix deps.get` through a
+`postinstall` hook:
 
 ```sh
 mise install
-mix deps.get
 ```
 
 Day to day:
@@ -178,67 +179,66 @@ Versions follow [SemVer](https://semver.org/), derived from the commit types:
 below 1.0, breaking changes bump the minor version and are called out in the
 changelog.
 
-**How git-cliff and jj fit together.** In a colocated repository jj keeps git's
-`HEAD` on the *parent* of the working-copy change (`@-`), not on `@` itself.
-git-cliff reads git, so it only sees changes below `@`. The procedure below
-relies on that: every change being released is committed below `@`, and the
-release change (version bump and changelog) is `@`, which git-cliff does not
-see.
+A release is cut from whatever `main` points at, by a mise task in
+`scripts/release`. Check it first with a dry run, which changes nothing:
 
-1. **Start the release change on top of `main`.** Make sure `main` points at
-   the last change to release and `mix ci` passes there.
+```sh
+mise run release 0.2.0 --dry-run
+```
 
-   ```sh
-   jj new main -m "chore(release): v0.2.0"
-   ```
+It checks the history and prints the commits since the last release and the
+changelog section they produce. **Read that section.** Only conventional
+commits are listed. If an entry is wrong, reword its commit
+(`jj describe -r <change>`) and run the dry run again.
 
-2. **Check that git sees the same history as jj.** jj normally exports to git
-   on every command, but a stale ref makes git-cliff walk the wrong history
-   *without an error*:
+Then release:
 
-   ```sh
-   jj git export
-   git log --oneline -3 HEAD         # the top line must be main's latest change
-   ```
+```sh
+mise run release 0.2.0
+```
 
-3. **Bump `@version` in `mix.exs`.**
+This:
 
-4. **Preview, then generate the changelog.** Run this from the repository
-   root, **not** from a jj workspace under `.workspaces/`: a secondary
-   workspace has no `.git`, and git-cliff there exits successfully with an
-   empty changelog.
-
-   ```sh
-   git cliff --unreleased --tag v0.2.0    # preview the new section
-   git cliff --tag v0.2.0 -o CHANGELOG.md
-   ```
-
-   **Read `CHANGELOG.md` before going on.** Both failure modes above produce a
-   well-formed file that is wrong, not an error. Only conventional commits are
-   listed, and `chore` commits are skipped (see `cliff.toml`), which is why the
-   release change itself never shows up.
-
-5. **Verify, then seal the release change and move `main` onto it.**
+1. refuses to run if the version is not newer than `mix.exs`, its tag already
+   exists, `main` is behind `origin`, a change to be released has no
+   description, or git's refs disagree with jj;
+2. creates a `chore(release): v0.2.0` change on top of `main` and bumps
+   `@version` in `mix.exs`;
+3. regenerates `CHANGELOG.md` with git-cliff;
+4. runs `mix ci`;
+5. moves `main` onto the release change and tags it `v0.2.0`;
+6. pushes `main` and the tag with `jj git push`;
+7. prints a summary and the steps for publishing to Hex:
 
    ```sh
-   mix ci
-   jj new
-   jj bookmark move main --to @-
+   mix hex.user whoami     # otherwise: mix hex.user auth
+   mix hex.build           # inspect the package contents
+   mix hex.publish         # publish the package and its docs
    ```
 
-6. **Tag and push.** jj creates and pushes the tag itself. `mix docs` links
-   to the source at `v<version>`, so the tag must exist on GitHub.
+If anything fails before the push, nothing has been pushed and the task
+prints the `jj op restore <operation>` command that undoes every local change.
 
-   ```sh
-   jj tag set v0.2.0 -r main
-   jj git push --bookmark main --tag v0.2.0
-   ```
+`mise run test:release` runs the release task against a throwaway copy of the
+repository with a local bare repository as `origin`. Run it after changing
+either script.
 
-7. **Publish to Hex.**
+### How git-cliff and jj fit together
 
-   ```sh
-   mix hex.publish
-   ```
+The task handles the following, but it matters if you ever release by hand.
+
+- In a colocated repository jj keeps git's `HEAD` on the *parent* of the
+  working-copy change (`@-`), not on `@` itself. git-cliff reads git, so it
+  only sees changes below `@`. The release change (version bump and
+  changelog) is `@` while the changelog is generated, so git-cliff never sees
+  it. The `chore` type keeps it out of the changelog later as well (see
+  `cliff.toml`).
+- A stale git ref makes git-cliff walk the wrong history **without an
+  error**. Run `jj git export` and compare `git log --oneline -1 main` with
+  `jj log -r main` before generating.
+- Run git-cliff from the repository root, never from a jj workspace under
+  `.workspaces/`. A secondary workspace has no `.git`, and git-cliff there
+  exits successfully with an empty changelog.
 
 ## Licence
 
