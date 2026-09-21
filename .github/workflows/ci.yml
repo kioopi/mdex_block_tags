@@ -49,6 +49,64 @@ jobs:
 
       - run: mix test
 
+  quality:
+    name: Quality (credo, dialyzer, ex_dna, reach)
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test # matches `preferred_envs: [ci: :test]` in mix.exs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        id: beam
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-quality-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-quality-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - run: mix deps.get
+
+      - run: mix compile --warnings-as-errors
+
+      # Restore and save are split because actions/cache only saves when the
+      # whole job succeeds; a dialyzer warning must not discard a fresh PLT.
+      - name: Restore PLT cache
+        id: plt_cache
+        uses: actions/cache/restore@v4
+        with:
+          key: plt-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            plt-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+          path: priv/plts
+
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+
+      - name: Save PLT cache
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.plt_cache.outputs.cache-primary-key }}
+          path: priv/plts
+
+      - run: mix credo --strict
+
+      - run: mix dialyzer --format github --format dialyxir
+
+      - run: mix ex_dna --max-clones 0
+
+      - run: mix reach.check --arch --smells
+
   test-latest-deps:
     name: Test against latest dependencies
     runs-on: ubuntu-latest

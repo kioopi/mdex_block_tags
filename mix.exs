@@ -19,7 +19,9 @@ defmodule MDExBlockTags.MixProject do
         "An MDEx plugin that wraps Markdown content in semantic HTML block " <>
           "elements using HTML comment markers.",
       dialyzer: [
-        plt_add_apps: [:ex_unit]
+        plt_add_apps: [:ex_unit],
+        plt_core_path: "priv/plts/core",
+        plt_local_path: "priv/plts"
       ],
       aliases: aliases()
     ]

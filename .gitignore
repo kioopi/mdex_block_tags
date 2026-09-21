@@ -57,3 +57,6 @@ CLAUDE.md
 
 # jj workspaces used for implementation
 /.workspaces/
+
+# Dialyzer PLTs (cached in CI, see .github/workflows/ci.yml)
+/priv/plts/
