@@ -37,23 +37,27 @@ defmodule MDExBlockTags.HTML do
   # The one place a name="value" pair is assembled, so the escaping decision
   # for both name and value exists exactly once.
   defp attribute(name, value) do
-    ~s( #{escape_attribute(name)}="#{escape_attribute(value)}")
+    ~s( #{escape(name)}="#{escape(value)}")
   end
 
   @doc """
-  Escapes a value for use inside a double-quoted HTML attribute.
+  Escapes a string for use inside a double-quoted HTML attribute or as text
+  content.
 
   `&` is replaced first, so the entities introduced by the later replacements
   are not escaped a second time.
 
+  Handlers get this function imported by `use MDExBlockTags.Handler`, for
+  building HTML strings from marker values.
+
   ## Examples
 
-      iex> MDExBlockTags.HTML.escape_attribute(~s(Tom & "Jerry"))
+      iex> MDExBlockTags.HTML.escape(~s(Tom & "Jerry"))
       "Tom &amp; &quot;Jerry&quot;"
 
   """
-  @spec escape_attribute(String.t()) :: String.t()
-  def escape_attribute(value) do
+  @spec escape(String.t()) :: String.t()
+  def escape(value) do
     value
     |> String.replace("&", "&amp;")
     |> String.replace("\"", "&quot;")
