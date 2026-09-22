@@ -177,5 +177,25 @@ defmodule MDExBlockTagsTest do
       assert html =~ "<section>"
       assert html =~ "data-sentinel"
     end
+
+    test "applies handlers from block_tags_handlers" do
+      defmodule ArticleHandler do
+        @moduledoc "Renders sections as articles."
+        use MDExBlockTags.Handler
+
+        @impl true
+        def match(%Marker{tag: "section"}), do: true
+        def match(_marker), do: false
+
+        @impl true
+        def marker(marker), do: %{marker | tag: "article"}
+      end
+
+      html = to_html("<!-- @section -->\n\nHi\n", block_tags_handlers: [ArticleHandler])
+
+      assert html =~ "<article>"
+      assert html =~ "</article>"
+      refute html =~ "<section>"
+    end
   end
 end

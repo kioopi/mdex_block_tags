@@ -66,6 +66,7 @@ MDEx.new() |> MDExBlockTags.attach()
 |---|---|
 | `:block_tags_allowed_tags` | `~w(section nav article aside main header footer div)` |
 | `:block_tags_allowed_attributes` | `~w(id role title)` |
+| `:block_tags_handlers` | `[]` — see [Customising output](#customising-output) |
 
 Attribute names beginning with `data-` or `aria-` are always permitted.
 
@@ -81,6 +82,52 @@ Attribute names beginning with `data-` or `aria-` are always permitted.
 - An `<!-- @end -->` with no open block is left in the document untouched.
 - A marker naming a **disallowed attribute fails closed**: the entire marker is
   left as an ordinary comment rather than rendered with the attribute stripped.
+
+## Customising output
+
+Handlers change the HTML emitted for the blocks they match. A handler is a
+module that uses `MDExBlockTags.Handler`:
+
+```elixir
+defmodule MyApp.DocsSection do
+  use MDExBlockTags.Handler
+
+  @impl true
+  def match(%Marker{tag: "section", classes: classes}), do: "docs" in classes
+  def match(_marker), do: false
+
+  @impl true
+  def add(_marker), do: [before: ~s(<a href="/docs">Back to Documentation</a>)]
+
+  @impl true
+  def wrap(_marker), do: [inner: %Marker{tag: "div", classes: ["doc-container"]}]
+end
+
+MDEx.to_html!(markdown, plugins: [{MDExBlockTags, block_tags_handlers: [MyApp.DocsSection]}])
+```
+
+| Callback | Purpose | Default |
+|---|---|---|
+| `match/1` | whether the handler applies to this block (required; needs a catch-all) | — |
+| `marker/1` | change the tag, classes or attributes | unchanged |
+| `add/1` | insert content at `:before`, `:start`, `:end` or `:after` (a bare value means `:start`) | `[]` |
+| `wrap/1` | add a wrapper element `:inner` or `:outer` (a bare marker means `:outer`) | `[]` |
+| `content/2` | rewrite the block's children | unchanged |
+
+One handler lays a block out as
+
+```
+before · <outer> · <tag> · <inner> · start · children · end · </inner> · </tag> · </outer> · after
+```
+
+Handlers apply in list order. Each sees the marker as the previous one left
+it, and wraps everything built so far, so a later handler always sits further
+from the children.
+
+Strings from `add/1` are inserted as raw HTML. Use the imported `escape/1`
+when interpolating marker values into them. It escapes a value for a
+double-quoted attribute value or for text content; it does not escape `'`, so
+it is not safe inside a single-quoted attribute.
 
 ## Safety
 
@@ -110,6 +157,10 @@ always allowed, and [ammonia](https://github.com/rust-ammonia/ammonia) (the
 sanitizer MDEx uses) has no per-tag prefix option, so
 `add_generic_attribute_prefixes` necessarily widens those two prefixes to
 every tag in the document — not just this plugin's.
+
+Handler output is trusted and is not added to the sanitizer allowlist. With
+`:sanitize` enabled, a tag, attribute or class a handler emits that falls
+outside the sanitizer allowlist will be stripped.
 
 ## Limitations
 

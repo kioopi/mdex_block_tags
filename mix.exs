@@ -60,7 +60,9 @@ defmodule MDExBlockTags.MixProject do
       main: "readme",
       extras: ["README.md", "CHANGELOG.md"],
       source_ref: "v#{@version}",
-      filter_modules: fn module, _metadata -> module == MDExBlockTags end
+      filter_modules: fn module, _metadata ->
+        module in [MDExBlockTags, MDExBlockTags.Handler, MDExBlockTags.Marker]
+      end
     ]
   end
 

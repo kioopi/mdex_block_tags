@@ -14,6 +14,20 @@ defmodule MDExBlockTags.Marker do
 
   This module knows nothing about MDEx. It takes the comment text as a binary
   and returns a classification.
+
+  ## The struct
+
+  `parse/2` returns a `%MDExBlockTags.Marker{}` for a recognised opening
+  marker. Its fields:
+
+    * `tag` — the command name, e.g. `"section"`.
+    * `classes` — the bare tokens, in order, e.g. `["main", "blue"]`.
+      Defaults to `[]`.
+    * `attributes` — the `key=value` tokens as `{name, value}` tuples, e.g.
+      `[{"id", "12"}]`. Defaults to `[]`.
+
+  A handler matches on and builds this struct directly — see
+  `MDExBlockTags.Handler`.
   """
 
   @enforce_keys [:tag]
@@ -34,8 +48,10 @@ defmodule MDExBlockTags.Marker do
   `aria-`.
   """
   @type config :: %{
-          allowed_tags: [String.t()],
-          allowed_attributes: [String.t()]
+          required(:allowed_tags) => [String.t()],
+          required(:allowed_attributes) => [String.t()],
+          # Callers such as MDExBlockTags.Rewriter carry further keys.
+          optional(atom()) => term()
         }
 
   @type result :: {:open, t()} | :close | :ordinary

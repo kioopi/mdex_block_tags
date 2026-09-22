@@ -41,16 +41,16 @@ defmodule MDExBlockTags.HTMLTest do
     end
   end
 
-  describe "escape_attribute/1" do
+  describe "escape/1" do
     test "escapes the four characters that break an attribute" do
-      assert HTML.escape_attribute(~s(a & b " c < d > e)) ==
+      assert HTML.escape(~s(a & b " c < d > e)) ==
                "a &amp; b &quot; c &lt; d &gt; e"
     end
 
     test "does not double-escape an ampersand it just introduced" do
-      assert HTML.escape_attribute(~s(")) == "&quot;"
-      assert HTML.escape_attribute("&") == "&amp;"
-      assert HTML.escape_attribute("&quot;") == "&amp;quot;"
+      assert HTML.escape(~s(")) == "&quot;"
+      assert HTML.escape("&") == "&amp;"
+      assert HTML.escape("&quot;") == "&amp;quot;"
     end
   end
 
