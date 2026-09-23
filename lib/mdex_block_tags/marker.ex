@@ -1,4 +1,11 @@
 defmodule MDExBlockTags.Marker do
+  @default_allowed_tags ~w(section nav article aside main header footer div)
+  @default_allowed_attributes ~w(id role title)
+  @options [
+    allowed_tags: @default_allowed_tags,
+    allowed_attributes: @default_allowed_attributes
+  ]
+
   @moduledoc """
   Recognises the HTML comments that open and close a block.
 
@@ -47,14 +54,10 @@ defmodule MDExBlockTags.Marker do
   are the attribute names permitted in addition to anything prefixed `data-` or
   `aria-`.
   """
-  @type config :: %{
-          required(:allowed_tags) => [String.t()],
-          required(:allowed_attributes) => [String.t()],
-          # Callers such as MDExBlockTags.Rewriter carry further keys.
-          optional(atom()) => term()
-        }
+  @type classification :: {:open, t()} | :close | :ordinary
 
-  @type result :: {:open, t()} | :close | :ordinary
+  @type classify_option :: {:allowed_tags, [String.t()]} | {:allowed_attributes, [String.t()]}
+  @type options :: [classify_option()]
 
   # Only a complete standalone comment counts.
   #
@@ -65,20 +68,40 @@ defmodule MDExBlockTags.Marker do
 
   # HTML/SVG attribute names: a leading letter, underscore or colon, then any
   # number of letters, digits, hyphens, underscores, colons or dots. This
-  # excludes whitespace, `>`, `"`, `'`, `=` and `/` — see allowed_attribute?/2.
+  # excludes whitespace, `>`, `"`, `'`, `=` and `/` — see allowed?/2.
   @attribute_name ~r/\A[a-zA-Z_:][-a-zA-Z0-9_:.]*\z/
 
   @doc """
-  Classifies a comment literal.
+  Returns the list of options that `classify/2` takes as second parameter.
 
   ## Examples
 
-      iex> config = %{allowed_tags: ["section"], allowed_attributes: ["id"]}
-      iex> MDExBlockTags.Marker.parse("<!-- @section -->", config)
+    iex> MDExBlockTags.Marker.options()
+    [
+      allowed_tags: ["section", "nav", "article", "aside", "main", "header", "footer", "div"],
+      allowed_attributes: ["id", "role", "title"]
+    ]
+
+    iex> MDExBlockTags.Marker.options(:keys)
+    [:allowed_tags, :allowed_attributes]
+  """
+  @spec options(:keys) :: [atom()]
+  def options(:keys), do: Keyword.keys(@options)
+  @spec options() :: options()
+  def options, do: @options
+
+  @doc """
+  Classifies a MDEx node.
+
+  ## Examples
+
+      iex> block = %MDEx.HtmlBlock{literal: "<!-- @section -->"}
+      iex> MDExBlockTags.Marker.classify(block, allowed_tags: ["section"], allowed_attributes: ["id"])
       {:open, %MDExBlockTags.Marker{tag: "section", classes: [], attributes: []}}
 
-      iex> config = %{allowed_tags: ["nav"], allowed_attributes: ["id"]}
-      iex> MDExBlockTags.Marker.parse(~s(<!-- @nav main blue id=12 -->), config)
+      iex> options = [allowed_tags: ["nav"], allowed_attributes: ["id"]]
+      iex> block = %MDEx.HtmlBlock{literal: ~s(<!-- @nav main blue id=12 -->)}
+      iex> MDExBlockTags.Marker.classify(block, options)
       {:open,
        %MDExBlockTags.Marker{
          tag: "nav",
@@ -86,29 +109,77 @@ defmodule MDExBlockTags.Marker do
          attributes: [{"id", "12"}]
        }}
 
-      iex> config = %{allowed_tags: ["nav"], allowed_attributes: ["id"]}
-      iex> MDExBlockTags.Marker.parse("<!-- @end -->", config)
+      iex> block = %MDEx.HtmlBlock{literal: ~s(<!-- @end -->)}
+      iex> MDExBlockTags.Marker.classify(block)
       :close
 
-      iex> config = %{allowed_tags: ["nav"], allowed_attributes: ["id"]}
-      iex> MDExBlockTags.Marker.parse("<!-- TODO: rewrite this -->", config)
+      iex> block = %MDEx.HtmlBlock{literal: ~s(<!-- TODO: rewrite this -->)}
+      iex> MDExBlockTags.Marker.classify(block)
       :ordinary
-
   """
-  @spec parse(String.t(), config()) :: result()
-  def parse(literal, config) when is_binary(literal) do
+
+  @spec classify(MDEx.Document.md_node(), options()) :: classification()
+
+  def classify(md_node, opts \\ [])
+
+  def classify(%MDEx.HtmlBlock{literal: literal}, opts) do
+    opts = Keyword.validate!(opts, @options)
+
+    case parse(literal) do
+      {:ok, %__MODULE__{tag: "end", attributes: [], classes: []}} ->
+        :close
+
+      {:ok, %__MODULE__{tag: "end"}} ->
+        :ordinary
+
+      {:ok, %__MODULE__{tag: tag, attributes: attributes} = marker} ->
+        with true <- tag in opts[:allowed_tags],
+             true <- Enum.all?(attributes, &allowed?(&1, opts[:allowed_attributes])) do
+          {:open, marker}
+        else
+          _ -> :ordinary
+        end
+
+      _ ->
+        :ordinary
+    end
+  end
+
+  def classify(_, _), do: :ordinary
+
+  @doc """
+  Parses a HTML comment.
+
+  ## Examples
+
+      iex> MDExBlockTags.Marker.parse("<!-- @section -->")
+      {:ok, %MDExBlockTags.Marker{tag: "section", classes: [], attributes: []}}
+
+      iex> MDExBlockTags.Marker.parse(~s(<!-- @nav main blue id=12 -->))
+      {:ok,
+       %MDExBlockTags.Marker{
+         tag: "nav",
+         classes: ["main", "blue"],
+         attributes: [{"id", "12"}]
+       }}
+
+      iex> MDExBlockTags.Marker.parse(~s(<!-- @end -->))
+      {:ok, %MDExBlockTags.Marker{tag: "end", classes: [], attributes: []}}
+
+      iex> MDExBlockTags.Marker.parse("<!-- TODO: rewrite this -->")
+      :invalid
+  """
+  @spec parse(String.t()) :: {:ok, t()} | :invalid
+  def parse(literal) when is_binary(literal) do
     with(
       {:ok, command, rest} <- split_comment(literal),
       {:ok, tokens} <- tokenize(rest),
-      {:open, tag} <- classify(String.downcase(command), tokens),
-      :ok <- tag_allowed?(tag, config),
-      {classes, attributes} <- parse_tokens(tokens),
-      :ok <- attributes_allowed?(attributes, config)
+      tag <- String.downcase(command),
+      {classes, attributes} <- parse_tokens(tokens)
     ) do
-      {:open, %__MODULE__{tag: tag, classes: classes, attributes: attributes}}
+      {:ok, %__MODULE__{tag: tag, classes: classes, attributes: attributes}}
     else
-      :close -> :close
-      _ -> :ordinary
+      _ -> :invalid
     end
   end
 
@@ -144,16 +215,6 @@ defmodule MDExBlockTags.Marker do
     RuntimeError -> :error
   end
 
-  defp classify("end", []), do: :close
-  defp classify("end", _attributes), do: :ordinary
-  defp classify(tag, _attributes), do: {:open, tag}
-
-  defp tag_allowed?("end", _config), do: :ok
-
-  defp tag_allowed?(tag, config) do
-    if tag in config.allowed_tags, do: :ok, else: :forbidden
-  end
-
   # Bare tokens are CSS classes; key=value tokens are HTML attributes.
   #
   #   @nav main blue id=12 data-open=false
@@ -180,25 +241,15 @@ defmodule MDExBlockTags.Marker do
     {[class | classes], attributes}
   end
 
-  defp attributes_allowed?(attributes, config) do
-    if Enum.all?(attributes, fn {name, _value} ->
-         allowed_attribute?(name, config)
-       end) do
-      :ok
-    else
-      :forbidden
-    end
-  end
-
   # A character-set check runs first: it is what actually constrains what can
   # reach the serialised tag, since it applies before either the exact-match
   # or the data-/aria- prefix check below. Without it, `starts_with?` only
   # constrains the first five characters of `name` and anything after that —
   # including whitespace, `>`, `"`, `'` and `=` — would reach
   # `HTML.attributes_string/1`.
-  defp allowed_attribute?(name, config) do
+  defp allowed?({name, _val}, allowed_attributes) do
     Regex.match?(@attribute_name, name) and
-      (name in config.allowed_attributes or
+      (name in allowed_attributes or
          String.starts_with?(name, "data-") or
          String.starts_with?(name, "aria-"))
   end

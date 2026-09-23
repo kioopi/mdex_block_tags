@@ -1,6 +1,17 @@
 defmodule MDExBlockTags do
-  @default_allowed_tags ~w(section nav article aside main header footer div)
-  @default_allowed_attributes ~w(id role title)
+  alias MDEx.Document
+  alias MDExBlockTags.Marker
+  alias MDExBlockTags.Rewriter
+
+  @options [
+    allowed_tags: :block_tags_allowed_tags,
+    allowed_attributes: :block_tags_allowed_attributes,
+    handlers: :block_tags_handlers,
+    classifier: :block_tags_classifier,
+    renderer: :block_tags_renderer
+  ]
+
+  @type options :: Rewriter.options()
 
   @moduledoc """
   An [MDEx](https://hexdocs.pm/mdex) plugin that adds semantic block
@@ -41,15 +52,32 @@ defmodule MDExBlockTags do
   ## Options
 
     * `:block_tags_allowed_tags` — the commands that may open a block.
-      Defaults to `#{inspect(@default_allowed_tags)}`.
+      Defaults to `#{inspect(Marker.options()[:allowed_tags])}`.
 
     * `:block_tags_allowed_attributes` — attribute names permitted in addition
       to anything prefixed `data-` or `aria-`. Defaults to
-      `#{inspect(@default_allowed_attributes)}`.
+      `#{inspect(Marker.options()[:allowed_attributes])}`.
 
     * `:block_tags_handlers` — `MDExBlockTags.Handler` modules that customise
       the output for the blocks they match, applied in list order. Defaults
       to `[]`.
+
+    * `:block_tags_renderer` — Anonymous function that replaces the default
+      renderer, `MDExBlockTags.Handlers.render/4`.
+      Takes `Marker.t()`, `[MDEx.Document.md_node]`, `MDEx.Sourcepos.t()` and returns
+      `[MDEx.Document.md_node]`.
+      This can be used to manipulate the AST of the MDEx Document inside a block.
+      Use with caution! `block_tags_handlers` are not applied anymore.
+      Prefer using a handler with `content/2`.
+
+    * `:block_tags_classifier` — Anonymous function that replaces the default
+      classifier, `MDExBlockTags.Marker.classify/2`.
+      Takes (MDEx.Document.md_node) returns `{:open, Marker.t()}` or `:close` or
+      `:ordinary`.
+      This can be used to start blocks on other elements than HTML comments or
+      change the parsing of the comments.
+      Use with caution! This does not apply `:block_tags_allowed_tags` or
+      `:block_tags_allowed_attributes`.
 
   A marker naming any other attribute is left in the document as an ordinary
   comment rather than being rendered with the attribute stripped.
@@ -73,9 +101,6 @@ defmodule MDExBlockTags do
   For untrusted Markdown, enabling `:sanitize` is the recommended posture.
   """
 
-  alias MDEx.Document
-  alias MDExBlockTags.Rewriter
-
   @doc """
   Attaches the plugin to an `MDEx.Document`.
 
@@ -90,11 +115,7 @@ defmodule MDExBlockTags do
   @spec attach(Document.t(), keyword()) :: Document.t()
   def attach(document, options \\ []) do
     document
-    |> Document.register_options([
-      :block_tags_allowed_tags,
-      :block_tags_allowed_attributes,
-      :block_tags_handlers
-    ])
+    |> Document.register_options(Keyword.values(@options))
     |> Document.put_options(options)
     |> Document.append_steps(
       block_tags_enable_unsafe: &enable_unsafe/1,
@@ -116,12 +137,13 @@ defmodule MDExBlockTags do
         document
 
       _enabled ->
-        cfg = config(document)
-        attributes = Enum.uniq(["class" | cfg.allowed_attributes])
+        opts = marker_defaults(document)
+        tags = opts[:allowed_tags]
+        attributes = Enum.uniq(["class" | opts[:allowed_attributes]])
 
         Document.put_sanitize_options(document,
-          add_tags: cfg.allowed_tags,
-          add_tag_attributes: Map.new(cfg.allowed_tags, &{&1, attributes}),
+          add_tags: tags,
+          add_tag_attributes: Map.new(tags, &{&1, attributes}),
           # ammonia has no per-tag prefix option, so add_generic_attribute_prefixes
           # necessarily widens data-*/aria-* to every tag in the document, not
           # just this plugin's own — see the README's Safety section.
@@ -130,21 +152,25 @@ defmodule MDExBlockTags do
     end
   end
 
-  defp rewrite(%Document{nodes: nodes} = document) do
-    %{document | nodes: Rewriter.run(nodes, config(document))}
+  defp marker_defaults(document) do
+    document
+    |> options(Keyword.take(@options, Marker.options(:keys)))
+    |> Keyword.validate!(Marker.options())
   end
 
-  defp config(document) do
-    %{
-      allowed_tags:
-        Document.get_option(document, :block_tags_allowed_tags, @default_allowed_tags),
-      allowed_attributes:
-        Document.get_option(
-          document,
-          :block_tags_allowed_attributes,
-          @default_allowed_attributes
-        ),
-      handlers: Document.get_option(document, :block_tags_handlers, [])
-    }
+  defp rewrite(%Document{nodes: nodes} = document) do
+    %{document | nodes: Rewriter.run(nodes, options(document))}
+  end
+
+  # Get options from MDEx.Document to pass to Rewriter.run/2
+  @spec options(MDEx.Document.t(), keyword()) :: options()
+  defp options(%MDEx.Document{} = document, opts \\ @options) do
+    opts
+    |> Enum.reduce([], fn {name, in_doc}, opts ->
+      case Document.get_option(document, in_doc) do
+        nil -> opts
+        opt -> [{name, opt} | opts]
+      end
+    end)
   end
 end

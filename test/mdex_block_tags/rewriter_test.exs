@@ -5,10 +5,10 @@ defmodule MDExBlockTags.RewriterTest do
 
   doctest MDExBlockTags.Rewriter
 
-  @config %{
+  @config [
     allowed_tags: ~w(section nav div),
     allowed_attributes: ~w(id role title)
-  }
+  ]
 
   defmodule JoinChildren do
     @moduledoc "Replaces the children with their texts joined in the order received."
@@ -137,9 +137,95 @@ defmodule MDExBlockTags.RewriterTest do
 
     test "applies configured handlers, passing children in document order" do
       nodes = [marker("<!-- @section -->"), para("one"), para("two")]
-      config = Map.put(@config, :handlers, [JoinChildren])
+      config = Keyword.put(@config, :handlers, [JoinChildren])
 
       assert literals(Rewriter.run(nodes, config)) == ["<section>", "one,two", "</section>"]
+    end
+  end
+
+  describe "custom classifier" do
+    test "can use different comment" do
+      nodes = [
+        marker("<!-- mar-ker start-->"),
+        para("inside"),
+        marker("<!-- mar-ker stop -->"),
+        para("outside")
+      ]
+
+      classifier = fn
+        %MDEx.HtmlBlock{literal: literal} ->
+          case Regex.run(~r/mar-ker (?<cmd>[[:alnum:]]+)/, literal, capture: [:cmd]) do
+            ["start"] -> {:open, %MDExBlockTags.Marker{tag: "div"}}
+            ["stop"] -> :close
+            _ -> :ordinary
+          end
+
+        _ ->
+          :ordinary
+      end
+
+      assert literals(Rewriter.run(nodes, classifier: classifier)) == [
+               "<div>",
+               "inside",
+               "</div>",
+               "outside"
+             ]
+    end
+
+    test "can use arbitrary nodes as markers" do
+      nodes = [
+        para("one"),
+        para("marker"),
+        para("two")
+      ]
+
+      classifier = fn
+        %MDEx.Paragraph{} = node ->
+          if "marker" == get_in(node, [Access.key(:nodes), Access.at(0), Access.key(:literal)]),
+            do: {:open, %MDExBlockTags.Marker{tag: "div"}},
+            else: :ordinary
+
+        _ ->
+          :ordinary
+      end
+
+      assert literals(Rewriter.run(nodes, classifier: classifier)) == [
+               "one",
+               "<div>",
+               "two",
+               "</div>"
+             ]
+    end
+  end
+
+  describe "custom renderer" do
+    test "can manipulate freely" do
+      nodes = [
+        para("bad"),
+        marker("<!-- @nobad -->"),
+        para("bad"),
+        para("good")
+      ]
+
+      renderer = fn _marker, nodes, _sourcepos ->
+        [
+          %MDEx.HtmlBlock{literal: "<!-- nothing bad from here -->"}
+          | Enum.filter(nodes, fn node ->
+              Enum.any?(node.nodes, fn
+                %MDEx.Text{literal: "bad"} -> false
+                _ -> true
+              end)
+            end)
+        ]
+      end
+
+      result = Rewriter.run(nodes, renderer: renderer, allowed_tags: ["nobad"])
+
+      assert literals(result) == [
+               "bad",
+               "<!-- nothing bad from here -->",
+               "good"
+             ]
     end
   end
 end

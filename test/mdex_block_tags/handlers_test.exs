@@ -193,7 +193,7 @@ defmodule MDExBlockTags.HandlersTest do
   defp para(text), do: %MDEx.Paragraph{nodes: [%MDEx.Text{literal: text}]}
 
   defp render(handlers, marker \\ @section, children \\ [para("content")]) do
-    Handlers.render(marker, children, @sourcepos, handlers)
+    Handlers.render(marker, children, @sourcepos, handlers: handlers)
   end
 
   defp literals(nodes) do

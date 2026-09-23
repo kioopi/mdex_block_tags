@@ -129,6 +129,16 @@ defmodule MDExBlockTagsTest do
       refute html =~ "<section"
       assert html =~ "<!-- @section onclick=alert(1) -->"
     end
+
+    test "sanitization can be used together with handlers" do
+      html =
+        MDEx.to_html!("<!-- @section intro -->\n\nHi\n",
+          plugins: [{MDExBlockTags, block_tags_handlers: []}],
+          sanitize: MDEx.Document.default_sanitize_options()
+        )
+
+      assert html =~ ~s(<section class="intro">)
+    end
   end
 
   describe "options" do
@@ -196,6 +206,58 @@ defmodule MDExBlockTagsTest do
       assert html =~ "<article>"
       assert html =~ "</article>"
       refute html =~ "<section>"
+    end
+  end
+
+  describe "custom renderer" do
+    test "Can manipulate MDEx Ast" do
+      markdown = """
+      Unchanged
+      <!-- @section -->
+      Upper
+      """
+
+      renderer = fn _marker, nodes, _sourcepos ->
+        doc =
+          nodes
+          |> MDEx.Document.wrap()
+          |> MDEx.Document.update_nodes(MDEx.Text, fn node ->
+            %{node | literal: String.upcase(node.literal)}
+          end)
+
+        doc.nodes
+      end
+
+      html =
+        to_html(markdown, block_tags_renderer: renderer)
+
+      assert html =~ "<p>Unchanged</p>\n<p>UPPER</p>"
+    end
+
+    test "Can be used with sanitization" do
+      markdown = """
+      <span id="clobber">raw</span>
+      <!-- @section -->
+      gets deleted
+      """
+
+      renderer = fn _marker, nodes, _sourcepos ->
+        doc =
+          nodes
+          |> MDEx.Document.wrap()
+          |> MDEx.Document.update_nodes(MDEx.Paragraph, fn _ -> nil end)
+
+        doc.nodes
+      end
+
+      html =
+        MDEx.to_html!(markdown,
+          plugins: [{MDExBlockTags, block_tags_renderer: renderer}],
+          sanitize: MDEx.Document.default_sanitize_options()
+        )
+
+      refute html =~ ~s(id="clobber")
+      refute html =~ ~s(id="gets deleted")
     end
   end
 end

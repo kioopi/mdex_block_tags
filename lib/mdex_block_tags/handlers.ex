@@ -26,6 +26,26 @@ defmodule MDExBlockTags.Handlers do
   @add_positions [:before, :start, :end, :after]
   @wrap_positions [:inner, :outer]
 
+  @type render_option :: {:handlers, [module()]}
+  @type options :: [render_option]
+  @type node_list :: [MDEx.Document.md_node()]
+
+  @doc """
+  Returns the list of options that `render/2` takes as last parameter.
+
+  ## Examples
+
+    iex> MDExBlockTags.Handlers.options()
+    [handlers: []]
+
+    iex> MDExBlockTags.Handlers.options(:keys)
+    [:handlers]
+  """
+  @spec options(:keys) :: [:handlers]
+  def options(:keys), do: Keyword.keys(options())
+  @spec options() :: options()
+  def options, do: [handlers: []]
+
   @doc """
   Renders a block opened by `marker` around `children`, applying `handlers`.
 
@@ -41,11 +61,12 @@ defmodule MDExBlockTags.Handlers do
       {~s(<section class="intro">\\n), "</section>\\n"}
 
   """
-  @spec render(Marker.t(), [MDEx.Document.md_node()], MDEx.Sourcepos.t(), [module()]) ::
-          [MDEx.Document.md_node()]
-  def render(marker, children, sourcepos, handlers) do
+  @spec render(Marker.t(), node_list(), MDEx.Sourcepos.t(), [render_option()]) :: node_list()
+  def render(marker, children, sourcepos, opts) do
+    opts = Keyword.validate!(opts, options())
+
     initial = %{marker: marker, children: children, prefix: [], suffix: []}
-    block = Enum.reduce(handlers, initial, &apply_handler/2)
+    block = Enum.reduce(opts[:handlers], initial, &apply_handler/2)
 
     block.prefix ++
       [open_node(block.marker, sourcepos) | block.children] ++
